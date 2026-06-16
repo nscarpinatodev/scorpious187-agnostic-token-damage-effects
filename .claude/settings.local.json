@@ -64,7 +64,13 @@
       "Bash(powershell -Command 'Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip = [System.IO.Compression.ZipFile]::OpenRead\\('\\\\''agnostic-token-damage-effects-v1.37.zip'\\\\''\\); $zip.Entries | Select-Object FullName; $zip.Dispose\\(\\)')",
       "Bash(powershell -Command ':*)",
       "Bash(powershell -Command \"\\(Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/nscarpinatodev/agnostic-token-damage-effects/main/module.json' -UseBasicParsing\\).Content\")",
-      "Bash(curl -s \"https://raw.githubusercontent.com/Muttley/foundryvtt-fallout/develop/system/src/documents/FalloutActor.mjs\")"
+      "Bash(curl -s \"https://raw.githubusercontent.com/Muttley/foundryvtt-fallout/develop/system/src/documents/FalloutActor.mjs\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(sed -i 's/\"version\": \"1.48\"/\"version\": \"1.49\"/' module.json)",
+      "Bash(sed -i 's/v1.48/v1.49/g' module.json)",
+      "Bash(powershell -Command \"Compress-Archive -Path module.json, scripts, styles, templates -DestinationPath agnostic-token-damage-effects-v1.49.zip -Force\")"
     ]
   }
 }
