@@ -16,6 +16,23 @@ import {
 
 const PRE_MOVE = new Map();
 
+// True when a movement jumped the token to its destination (teleport / displace)
+// instead of travelling there. Blood trails represent blood dripping along a
+// path, so they must not be left for teleports. In Foundry V13 a teleport is
+// flagged either on the update operation (options.teleport) or by the movement
+// action's config (CONFIG.Token.movement.actions[<action>].teleport).
+function isTeleportMovement(movement) {
+  if (!movement) return false;
+  const actions = CONFIG?.Token?.movement?.actions ?? {};
+  const isTeleportWaypoint = wp => {
+    if (!wp) return false;
+    if (wp.teleport === true) return true;
+    return actions[wp.action]?.teleport === true;
+  };
+  if (isTeleportWaypoint(movement.destination)) return true;
+  return (movement.passed?.waypoints ?? []).some(isTeleportWaypoint);
+}
+
 Hooks.once("init", () => {
   console.log("Agnostic Token Damage Effects loading");
   registerSettings(refreshAllVisibleTokens);
@@ -123,9 +140,12 @@ Hooks.on("preUpdateToken", (tokenDoc, change) => {
   PRE_MOVE.set(tokenDoc.id, { x: tokenDoc.x, y: tokenDoc.y });
 });
 
-Hooks.on("updateToken", async (tokenDoc, change) => {
+Hooks.on("updateToken", async (tokenDoc, change, options) => {
   const moved = Object.hasOwn(change, "x") || Object.hasOwn(change, "y");
   if (!moved) return;
+
+  // Teleports jump the token without travelling — leave no trail.
+  if (options?.teleport) { PRE_MOVE.delete(tokenDoc.id); return; }
 
   const actor = tokenDoc.actor;
   if (!actor) { PRE_MOVE.delete(tokenDoc.id); return; }
@@ -149,10 +169,14 @@ Hooks.on("updateToken", async (tokenDoc, change) => {
 });
 
 // moveToken fires once per move after the update completes, with the full
-// movement operation including origin, destination, and waypoint history.
-Hooks.on("moveToken", async (tokenDoc, movement) => {
+// movement operation including origin, destination, and the waypoints traversed
+// in that move (movement.passed).
+Hooks.on("moveToken", async (tokenDoc, movement, operation) => {
   if (!game.settings.get(MODULE_ID, "enableBloodPathTrails")) return;
   if (!canvas?.ready) return;
+
+  // Teleports jump the token without travelling — leave no trail.
+  if (operation?.teleport || isTeleportMovement(movement)) return;
 
   const actor = tokenDoc.actor;
   if (!actor) return;
@@ -166,20 +190,21 @@ Hooks.on("moveToken", async (tokenDoc, movement) => {
   const { color: colorOverride, suppressBlood } = getBloodColorForActor(actor, getSelectedPreset());
   if (suppressBlood) return;
 
-  // Build waypoint list from origin + history waypoints + destination
+  // Build the waypoint list for THIS move only. movement.passed.waypoints is
+  // the path traversed by the current move; movement.history.* is the token's
+  // cumulative recorded path for the turn — re-drawing it on every move
+  // re-marks already-marked segments and multiplies the trails.
   const origin      = movement?.origin;
   const destination = movement?.destination;
   if (!origin || !destination) return;
 
-  const historyWaypoints = movement?.history?.recorded?.waypoints
-    ?? movement?.history?.unrecorded?.waypoints
-    ?? [];
-
-  const waypoints = [
-    { x: origin.x, y: origin.y },
-    ...historyWaypoints.map(w => ({ x: w.x, y: w.y })),
-    { x: destination.x, y: destination.y }
-  ];
+  const passedWaypoints = movement?.passed?.waypoints ?? [];
+  const waypoints = passedWaypoints.length >= 2
+    ? passedWaypoints.map(w => ({ x: w.x, y: w.y }))
+    : [
+        { x: origin.x, y: origin.y },
+        { x: destination.x, y: destination.y }
+      ];
 
   // Wait for the canvas movement animation to finish so marks appear after
   // the token reaches each waypoint/endpoint.
