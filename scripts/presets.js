@@ -1,5 +1,5 @@
-export const MODULE_ID = "agnostic-token-damage-effects";
-export const TMFX_FILTER_ID = "agnostic-token-damage-effects-desat";
+export const MODULE_ID = "scorpious187-agnostic-token-damage-effects";
+export const TMFX_FILTER_ID = "scorpious187-agnostic-token-damage-effects-desat";
 
 function resolveByPaths(actor, currentPath, maxPath) {
   if (!actor || !currentPath || !maxPath) return null;

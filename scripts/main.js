@@ -34,14 +34,14 @@ function isTeleportMovement(movement) {
 }
 
 Hooks.once("init", () => {
-  console.log("Agnostic Token Damage Effects loading");
+  console.log("Scorpious187's Agnostic Token Damage Effects loading");
   registerSettings(refreshAllVisibleTokens);
 });
 
 Hooks.once("ready", () => {
   if (!tokenMagicAvailable()) {
-    ui.notifications?.warn("Agnostic Token Damage Effects: Token Magic FX is not active — desaturation and tint effects will be disabled.");
-    console.warn("Agnostic Token Damage Effects | Token Magic FX is not active. Desaturation and tint effects disabled.");
+    ui.notifications?.warn("Scorpious187's Agnostic Token Damage Effects: Token Magic FX is not active — desaturation and tint effects will be disabled.");
+    console.warn("Scorpious187's Agnostic Token Damage Effects | Token Magic FX is not active. Desaturation and tint effects disabled.");
   }
   patchTmfxLogging();
 });
