@@ -70,7 +70,14 @@
       "Bash(git push *)",
       "Bash(sed -i 's/\"version\": \"1.48\"/\"version\": \"1.49\"/' module.json)",
       "Bash(sed -i 's/v1.48/v1.49/g' module.json)",
-      "Bash(powershell -Command \"Compress-Archive -Path module.json, scripts, styles, templates -DestinationPath agnostic-token-damage-effects-v1.49.zip -Force\")"
+      "Bash(powershell -Command \"Compress-Archive -Path module.json, scripts, styles, templates -DestinationPath agnostic-token-damage-effects-v1.49.zip -Force\")",
+      "Bash(unzip -l agnostic-token-damage-effects-v1.50.zip)",
+      "Bash(gh --version)",
+      "Bash(zip -r agnostic-token-damage-effects-v1.51.zip scripts styles templates module.json -x \"*.DS_Store\")",
+      "Bash(unzip -l agnostic-token-damage-effects-v1.51.zip)",
+      "PowerShell(Remove-Item -Force \"agnostic-token-damage-effects-v1.51.zip\" -ErrorAction SilentlyContinue; Compress-Archive -Path scripts, styles, templates, module.json -DestinationPath \"agnostic-token-damage-effects-v1.51.zip\" -CompressionLevel Optimal; Add-Type -AssemblyName System.IO.Compression.FileSystem; $z = [System.IO.Compression.ZipFile]::OpenRead\\(\\(Resolve-Path \"agnostic-token-damage-effects-v1.51.zip\"\\)\\); $z.Entries | ForEach-Object { $_.FullName }; $z.Dispose\\(\\))",
+      "Bash(git commit *)",
+      "Bash(git tag *)"
     ]
   }
 }
