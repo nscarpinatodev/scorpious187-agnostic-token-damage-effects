@@ -12,6 +12,7 @@ import {
   clearRuntimeEffects,
   maybeDropBloodTrail,
   dropPathTrail,
+  dropDamageSplatter,
   playHitFlash
 } from "./effects.js";
 import { dlog } from "./log.js";
@@ -83,6 +84,7 @@ function injectSettingsUI(root) {
   getEl("hpPreset")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.hpDetection"));
   getEl("enableSaturation")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.tokenColoration"));
   getEl("flashOnDamage")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.hitFlash"));
+  getEl("enableDamageSplatter")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.damageSplatter"));
 
   const bleedingEl = getEl("enableBleedingOverlay");
   if (bleedingEl) {
@@ -383,6 +385,7 @@ Hooks.on("updateActor", async (actor, change) => {
   PRE_HP.delete(actor.id);
   await refreshActorTokens(actor);
   maybeFlashActor(actor, oldHp);
+  await maybeSplatterActor(actor, oldHp);
 });
 
 // Marking a token dead/defeated toggles a status ActiveEffect rather than
@@ -416,6 +419,26 @@ function maybeFlashActor(actor, oldHp) {
   for (const token of actor.getActiveTokens(true)) {
     if (resolveEffectConfig(token.document).disabled) continue;
     playHitFlash(token, color);
+  }
+}
+
+// Spray a radial burst of ground splatter, scaled to the damage taken.
+async function maybeSplatterActor(actor, oldHp) {
+  if (oldHp == null) return;
+  if (!game.settings.get(MODULE_ID, "enableDamageSplatter")) return;
+
+  const hp = getActorHp(actor);
+  if (!hp) return;
+  const damage = oldHp - hp.value;
+  if (damage <= 0) return; // splatter on damage only
+
+  const frac = hp.max > 0 ? damage / hp.max : 0;
+
+  for (const token of actor.getActiveTokens(true)) {
+    const cfg = resolveEffectConfig(token.document);
+    if (cfg.disabled || cfg.suppressBlood) continue;
+    const recs = dropDamageSplatter(token.document, frac, cfg.color);
+    if (recs?.length) await addDecals(recs, { lifetimeMs: trailLifetimeMs(), tokenId: token.document.id });
   }
 }
 

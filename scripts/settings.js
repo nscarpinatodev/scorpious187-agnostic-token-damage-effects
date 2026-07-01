@@ -123,6 +123,16 @@ export function registerSettings(refreshAllVisibleTokens) {
     default: true
   });
 
+  // ── Damage Splatter ───────────────────────────────────────────────────────
+  game.settings.register(MODULE_ID, "enableDamageSplatter", {
+    name: "ATDE.settings.enableDamageSplatter.name",
+    hint: "ATDE.settings.enableDamageSplatter.hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
   // ── Blood Effects ─────────────────────────────────────────────────────────
   // (Blood Colors configure button is injected here by the renderSettingsConfig hook)
 

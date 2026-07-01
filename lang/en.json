@@ -3,6 +3,7 @@
   "ATDE.headers.hpDetection": "HP Detection",
   "ATDE.headers.tokenColoration": "Token Coloration",
   "ATDE.headers.hitFlash": "Hit Flash",
+  "ATDE.headers.damageSplatter": "Damage Splatter",
   "ATDE.headers.bloodColors": "Blood Colors",
   "ATDE.headers.bloodEffects": "Blood Effects",
   "ATDE.headers.deathBloodPool": "Death Blood Pool",
@@ -35,6 +36,8 @@
   "ATDE.settings.flashOnDamage.hint": "Briefly pulse a red tint over a token when it loses HP.",
   "ATDE.settings.flashOnHeal.name": "Flash on Heal",
   "ATDE.settings.flashOnHeal.hint": "Briefly pulse a green tint over a token when it gains HP.",
+  "ATDE.settings.enableDamageSplatter.name": "Enable Damage Splatter",
+  "ATDE.settings.enableDamageSplatter.hint": "Spray blood splatter on the ground around a token when it takes damage. The amount scales with the damage dealt (as a share of max HP). Respects the Persist Blood Between Reloads setting.",
 
   "ATDE.settings.enableBleedingOverlay.name": "Enable Bleeding Overlay",
   "ATDE.settings.enableBleedingOverlay.hint": "Show animated edge drips at or below the bleeding threshold.",

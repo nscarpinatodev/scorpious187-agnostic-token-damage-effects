@@ -503,6 +503,44 @@ function _placePathMark(layer, x, y, angle, colorOverride, tokenDoc, lifetime) {
   return record;
 }
 
+// ---------------------------------------------------------------------------
+// Damage splatter — radial burst of marks flung around a token when it's hit
+// ---------------------------------------------------------------------------
+
+// amountFrac is the damage taken as a fraction of max HP (0..1); it scales the
+// number of marks. Returns the persistence records for the marks placed.
+export function dropDamageSplatter(tokenDoc, amountFrac, colorOverride) {
+  if (!canvas?.ready) return [];
+
+  const token = tokenDoc?.object;
+  if (!token || token.destroyed) return [];
+
+  const layer = canvas.tokens;
+  if (!layer) return [];
+
+  const lifetimeSec = Number(game.settings.get(MODULE_ID, "bloodTrailLifetime") ?? 180);
+  const lifetime = lifetimeSec >= 1830 ? null : lifetimeSec * 1000;
+
+  const cx = token.center.x;
+  const cy = token.center.y;
+  const reach = Math.max(token.w, token.h);
+
+  const frac = Math.max(0, Math.min(1, amountFrac));
+  const count = Math.max(1, Math.round(1 + frac * 12));
+
+  const records = [];
+  for (let i = 0; i < count; i++) {
+    const ang  = Math.random() * Math.PI * 2;
+    const dist = reach * (0.2 + Math.random() * 0.85); // roughly within a tile of the token
+    const px = cx + Math.cos(ang) * dist;
+    const py = cy + Math.sin(ang) * dist;
+    // Smears radiate outward from the impact point.
+    const rec = _placePathMark(layer, px, py, ang, colorOverride, tokenDoc, lifetime);
+    if (rec) records.push(rec);
+  }
+  return records;
+}
+
 function _drawBloodSmear(g, angle, rng = Math.random) {
   const r = (min, max) => randWith(rng, min, max);
   const bloodColor = g._hvColorOverride ?? getBloodColor();
