@@ -16,6 +16,37 @@
   cursor: pointer;
 }
 
+/* ── Death-style selector in the blood config dialog ──────────────────── */
+.atde-deathstyle-label {
+  margin-left: 10px;
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+.atde-deathstyle-select {
+  flex: 0 0 auto;
+  min-width: 84px;
+}
+
+/* ── Per-token override section in Token Config ───────────────────────── */
+.atde-token-config {
+  border: 1px solid var(--color-border-light-primary, #782e22);
+  border-radius: 4px;
+  padding: 4px 8px 6px;
+  margin: 6px 0;
+}
+.atde-token-config legend {
+  font-weight: 700;
+  padding: 0 6px;
+}
+
+/* ── Token HUD damage-effects toggle ──────────────────────────────────── */
+/* When effects are disabled the button is highlighted red so its state reads
+   at a glance. Uses Foundry's .control-icon base styling. */
+.atde-hud-toggle.active {
+  color: #ff6b6b;
+  box-shadow: 0 0 8px rgba(255, 60, 60, 0.6);
+}
+
 /* ── TypeColorsConfig dialog section headers ──────────────────────────── */
 .atde-dialog-header {
   font-size: 0.8em;

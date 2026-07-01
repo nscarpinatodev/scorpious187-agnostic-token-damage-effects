@@ -1,6 +1,6 @@
 import { MODULE_ID, TMFX_FILTER_ID, tokenMagicAvailable } from "./presets.js";
-
-const DBG = "ATDE |";
+import { dlog, dwarn, dtrace, elog, isDebug } from "./log.js";
+import { makeColorMatrixFilter } from "./pixi-compat.js";
 
 function hexToNumber(value) {
   if (typeof value !== "string") return 0x8b0000;
@@ -29,17 +29,16 @@ export async function applyAlpha(tokenDoc, alpha) {
   const current = Number(tokenDoc.alpha ?? 1);
   if (Math.abs(current - alpha) < 0.001) return;
   const canMod = tokenDoc.canUserModify(game.user, "update");
-  console.log(`${DBG} applyAlpha | token="${tokenDoc.name}" user="${game.user.name}" isGM=${game.user.isGM} canModify=${canMod} currentAlpha=${current} targetAlpha=${alpha}`);
+  dlog(`applyAlpha | token="${tokenDoc.name}" user="${game.user.name}" isGM=${game.user.isGM} canModify=${canMod} currentAlpha=${current} targetAlpha=${alpha}`);
   if (!canMod) return;
   await tokenDoc.update({ alpha }, { animate: false });
 }
 
-// Intercept all TMFX entry points once and log + stack-trace every call.
-// This runs once when the module loads so we catch calls from ANY source,
-// not just our own code.
+// Intercept all TMFX entry points once and stack-trace every call. Only wired
+// up when debug logging is enabled — no interception overhead in normal play.
 let _tmfxPatched = false;
 export function patchTmfxLogging() {
-  if (_tmfxPatched || !globalThis.TokenMagic) return;
+  if (_tmfxPatched || !isDebug() || !globalThis.TokenMagic) return;
   _tmfxPatched = true;
   const TM = globalThis.TokenMagic;
   for (const method of ["addUpdateFilters", "addFilters", "deleteFilters", "updateFilters", "removeFilters"]) {
@@ -51,13 +50,11 @@ export function patchTmfxLogging() {
         ? target.map(t => t?.name ?? t?.document?.name ?? "(unknown)").join(", ")
         : (target?.name ?? target?.document?.name ?? "(unknown)");
       const user = game?.user?.name ?? "?";
-      console.groupCollapsed(`${DBG} TMFX.${method}() | user="${user}" target="${targetName}"`);
-      console.trace("call stack");
-      console.groupEnd();
+      dtrace(`TMFX.${method}() | user="${user}" target="${targetName}"`);
       return orig.apply(this, args);
     };
   }
-  console.log(`${DBG} TMFX methods patched for debug logging`);
+  dlog("TMFX methods patched for debug logging");
 }
 
 async function tryApply(target, params) {
@@ -65,7 +62,7 @@ async function tryApply(target, params) {
     await globalThis.TokenMagic.addUpdateFilters(target, params);
     return true;
   } catch (err) {
-    console.warn(`${DBG} tryApply caught error:`, err);
+    dwarn("tryApply caught error:", err);
     return false;
   }
 }
@@ -75,32 +72,16 @@ async function tryDelete(target, filterId) {
     await globalThis.TokenMagic.deleteFilters(target, filterId);
     return true;
   } catch (err) {
-    console.warn(`${DBG} tryDelete caught error:`, err);
+    dwarn("tryDelete caught error:", err);
     return false;
   }
 }
 
-export async function applySaturation(token, state, tintColor = null, applyTint = true) {
+// Computes the { saturation, red, green, blue } colour factors for the current
+// HP state, shared by the TMFX and native-fallback paths.
+function computeColorFactors(state, tintColor, applyTint) {
   const satEnabled  = game.settings.get(MODULE_ID, "enableSaturation");
   const tintEnabled = game.settings.get(MODULE_ID, "enableDamageTint");
-
-  // fxPlayerPermission ON  → TMFX broadcasts non-GM calls to the GM via socket (safe)
-  // fxPlayerPermission OFF → TMFX calls setFlag directly → server rejects for non-GM
-  const fxPlayerPerm = game.settings.get('tokenmagic', 'fxPlayerPermission') ?? false;
-  const canCallTMFX  = game.user.isGM || fxPlayerPerm;
-
-  console.log(`${DBG} applySaturation | token="${token?.document?.name}" user="${game.user.name}" isGM=${game.user.isGM} fxPlayerPerm=${fxPlayerPerm} canCallTMFX=${canCallTMFX} satEnabled=${satEnabled} tintEnabled=${tintEnabled}`);
-
-  if (!satEnabled && !tintEnabled) {
-    await clearVisualFilter(token);
-    return;
-  }
-  if (!tokenMagicAvailable() || !token) return;
-
-  if (!canCallTMFX) {
-    console.log(`${DBG} applySaturation | SKIPPING TMFX — not GM and fxPlayerPermission is disabled in TMFX settings`);
-    return;
-  }
 
   let red = 1, green = 1, blue = 1;
 
@@ -127,38 +108,113 @@ export async function applySaturation(token, state, tintColor = null, applyTint 
     }
   }
 
-  const params = [{
-    filterType: "adjustment",
-    filterId: TMFX_FILTER_ID,
-    saturation: satEnabled ? state.saturation : 1,
-    red, green, blue
-  }];
+  return { saturation: satEnabled ? state.saturation : 1, red, green, blue };
+}
 
-  console.log(`${DBG} applySaturation | calling addUpdateFilters for token="${token?.document?.name}"`);
-  const targets = [token, token.document, [token], [token.document]].filter(Boolean);
-  let success = false;
-  for (const target of targets) {
-    success = (await tryApply(target, params)) || success;
-    if (success) break;
+export async function applySaturation(token, state, tintColor = null, applyTint = true) {
+  const satEnabled  = game.settings.get(MODULE_ID, "enableSaturation");
+  const tintEnabled = game.settings.get(MODULE_ID, "enableDamageTint");
+
+  if (!satEnabled && !tintEnabled) {
+    await clearVisualFilter(token);
+    return;
   }
+  if (!token) return;
 
-  if (!success) {
-    console.warn(`${DBG} Could not apply Token Magic desaturation filter`, token);
+  const { saturation, red, green, blue } = computeColorFactors(state, tintColor, applyTint);
+
+  // Prefer Token Magic FX when present — its filters replicate to every client.
+  // Otherwise fall back to a per-client native ColorMatrixFilter (no perms, no
+  // dependency). The two never coexist on a token.
+  if (tokenMagicAvailable()) {
+    clearNativeColor(token);
+
+    // fxPlayerPermission ON  → TMFX broadcasts non-GM calls to the GM via socket
+    // fxPlayerPermission OFF → TMFX setFlag is rejected for non-GM; GM's filter
+    //   still replicates to this client, so skipping here is correct.
+    const fxPlayerPerm = game.settings.get('tokenmagic', 'fxPlayerPermission') ?? false;
+    const canCallTMFX  = game.user.isGM || fxPlayerPerm;
+    dlog(`applySaturation | TMFX path token="${token?.document?.name}" canCallTMFX=${canCallTMFX}`);
+    if (!canCallTMFX) return;
+
+    const params = [{
+      filterType: "adjustment",
+      filterId: TMFX_FILTER_ID,
+      saturation,
+      red, green, blue
+    }];
+
+    const targets = [token, token.document, [token], [token.document]].filter(Boolean);
+    let success = false;
+    for (const target of targets) {
+      success = (await tryApply(target, params)) || success;
+      if (success) break;
+    }
+    if (!success) elog("Could not apply Token Magic desaturation filter", token);
+  } else {
+    dlog(`applySaturation | native fallback token="${token?.document?.name}"`);
+    applyNativeColor(token, saturation, red, green, blue);
   }
 }
 
 export async function clearVisualFilter(token) {
+  if (!token) return;
+  clearNativeColor(token);
+
+  if (!tokenMagicAvailable()) return;
   const fxPlayerPerm = game.settings.get('tokenmagic', 'fxPlayerPermission') ?? false;
   const canCallTMFX  = game.user.isGM || fxPlayerPerm;
-  console.log(`${DBG} clearVisualFilter | token="${token?.document?.name}" user="${game.user.name}" isGM=${game.user.isGM} fxPlayerPerm=${fxPlayerPerm} canCallTMFX=${canCallTMFX}`);
-  if (!tokenMagicAvailable() || !token) return;
-  if (!canCallTMFX) {
-    console.log(`${DBG} clearVisualFilter | SKIPPING TMFX — not GM and fxPlayerPermission is disabled`);
-    return;
-  }
+  if (!canCallTMFX) return;
   const targets = [token, token.document, [token], [token.document]].filter(Boolean);
   for (const target of targets) {
     const ok = await tryDelete(target, TMFX_FILTER_ID);
     if (ok) break;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Native colour fallback (no Token Magic FX)
+// ---------------------------------------------------------------------------
+// Applies desaturation + blood tint directly to the token mesh via a
+// ColorMatrixFilter. Purely client-side (no document writes), so it needs no
+// special permissions and renders for every user independently.
+
+function ensureColorFilter(token) {
+  const mesh = token.mesh;
+  if (!mesh) return null;
+  if (!token._atdeColorFilter) token._atdeColorFilter = makeColorMatrixFilter();
+  const f = token._atdeColorFilter;
+  if (!mesh.filters) mesh.filters = [f];
+  else if (!mesh.filters.includes(f)) mesh.filters.push(f);
+  return f;
+}
+
+function applyNativeColor(token, saturation, red, green, blue) {
+  const f = ensureColorFilter(token);
+  if (!f) return;
+
+  // Standard luminance-preserving saturation matrix, with each output row then
+  // scaled by the per-channel tint factor (channelScale · saturationMatrix).
+  const lr = 0.213, lg = 0.715, lb = 0.072;
+  const s = saturation;
+  const sr = (1 - s) * lr, sg = (1 - s) * lg, sb = (1 - s) * lb;
+
+  f.matrix = [
+    red   * (sr + s), red   * sg,       red   * sb,       0, 0,
+    green * sr,       green * (sg + s), green * sb,       0, 0,
+    blue  * sr,       blue  * sg,       blue  * (sb + s), 0, 0,
+    0,                0,                0,                1, 0
+  ];
+}
+
+export function clearNativeColor(token) {
+  const f = token?._atdeColorFilter;
+  if (!f) return;
+  const mesh = token.mesh;
+  if (mesh?.filters) {
+    const i = mesh.filters.indexOf(f);
+    if (i >= 0) mesh.filters.splice(i, 1);
+    if (mesh.filters.length === 0) mesh.filters = null;
+  }
+  token._atdeColorFilter = null;
 }

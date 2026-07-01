@@ -1,8 +1,8 @@
-import { MODULE_ID, tokenMagicAvailable, getSelectedPreset } from "./presets.js";
+import { MODULE_ID, tokenMagicAvailable } from "./presets.js";
 import { registerSettings } from "./settings.js";
 import { hpRelevantChange, getActorHp } from "./hp-resolver.js";
 import { computeState, applyAlpha, applySaturation, clearVisualFilter, patchTmfxLogging } from "./visuals.js";
-import { getBloodColorForActor } from "./creature-types.js";
+import { resolveEffectConfig } from "./creature-types.js";
 import { TypeColorsConfig } from "./type-colors-config.js";
 import {
   ensureBleedingOverlay,
@@ -11,8 +11,18 @@ import {
   removeBloodPool,
   clearRuntimeEffects,
   maybeDropBloodTrail,
-  dropPathTrail
+  dropPathTrail,
+  playHitFlash
 } from "./effects.js";
+import { dlog } from "./log.js";
+import {
+  addDecals,
+  removePoolDecalForToken,
+  clearSceneDecals,
+  redrawAll,
+  onRecordsChanged,
+  startSweep
+} from "./persistence.js";
 
 const PRE_MOVE = new Map();
 
@@ -34,16 +44,21 @@ function isTeleportMovement(movement) {
 }
 
 Hooks.once("init", () => {
-  console.log("Scorpious187's Agnostic Token Damage Effects loading");
+  dlog("Scorpious187's Agnostic Token Damage Effects loading");
   registerSettings(refreshAllVisibleTokens);
 });
 
 Hooks.once("ready", () => {
   if (!tokenMagicAvailable()) {
-    ui.notifications?.warn("Scorpious187's Agnostic Token Damage Effects: Token Magic FX is not active — desaturation and tint effects will be disabled.");
-    console.warn("Scorpious187's Agnostic Token Damage Effects | Token Magic FX is not active. Desaturation and tint effects disabled.");
+    ui.notifications?.info(game.i18n.localize("ATDE.notify.noTmfx"));
+    dlog("Token Magic FX not active — using native ColorMatrixFilter fallback.");
   }
   patchTmfxLogging();
+
+  // Public API — e.g. game.modules.get(id).api.clearBlood() from a macro.
+  const mod = game.modules.get(MODULE_ID);
+  if (mod) mod.api = { clearBlood: clearSceneDecals };
+  startSweep();
 });
 
 function injectSettingsUI(root) {
@@ -57,32 +72,35 @@ function injectSettingsUI(root) {
 
   if (!getEl("hpPreset")) return; // Our settings aren't in this root
 
-  const mkHeader = label => {
+  const L = key => game.i18n.localize(key);
+  const mkHeader = key => {
     const h = document.createElement("h3");
     h.className = "atde-settings-header";
-    h.textContent = label;
+    h.textContent = L(key);
     return h;
   };
 
-  getEl("hpPreset")?.insertAdjacentElement("beforebegin", mkHeader("HP Detection"));
-  getEl("enableSaturation")?.insertAdjacentElement("beforebegin", mkHeader("Token Coloration"));
+  getEl("hpPreset")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.hpDetection"));
+  getEl("enableSaturation")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.tokenColoration"));
+  getEl("flashOnDamage")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.hitFlash"));
 
   const bleedingEl = getEl("enableBleedingOverlay");
   if (bleedingEl) {
-    bleedingEl.insertAdjacentElement("beforebegin", mkHeader("Blood Effects"));
+    bleedingEl.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.bloodEffects"));
 
     const btnRow = document.createElement("div");
     btnRow.className = "form-group atde-config-button-row";
     btnRow.innerHTML = `
-      <label>Blood Colors by Creature Type</label>
-      <div class="form-fields"><button type="button"><i class="fas fa-tint"></i> Configure</button></div>
-      <p class="hint">Customize the global default blood color and per-type colors (undead, construct, elementals, and custom types).</p>`;
+      <label>${L("ATDE.bloodColors.buttonLabel")}</label>
+      <div class="form-fields"><button type="button"><i class="fas fa-tint"></i> ${L("ATDE.bloodColors.configure")}</button></div>
+      <p class="hint">${L("ATDE.bloodColors.buttonHint")}</p>`;
     btnRow.querySelector("button").addEventListener("click", () => new TypeColorsConfig().render(true));
     bleedingEl.previousElementSibling.insertAdjacentElement("beforebegin", btnRow);
-    btnRow.insertAdjacentElement("beforebegin", mkHeader("Blood Colors"));
+    btnRow.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.bloodColors"));
   }
 
-  getEl("enableBloodPool")?.insertAdjacentElement("beforebegin", mkHeader("Death Blood Pool"));
+  getEl("enableBloodPool")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.deathBloodPool"));
+  getEl("persistDecals")?.insertAdjacentElement("beforebegin", mkHeader("ATDE.headers.persistence"));
 
   for (const key of ["bloodPoolLifetime", "bloodTrailLifetime"]) {
     const el = getEl(key);
@@ -116,8 +134,84 @@ Hooks.on("renderSettingsConfig", (_app, html) => {
   injectSettingsUI(root);
 });
 
+// GM-only Token HUD button to toggle all damage effects for a single token.
+Hooks.on("renderTokenHUD", (hud, html) => {
+  if (!game.user.isGM) return;
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  const tokenDoc = hud?.object?.document;
+  if (!root || !tokenDoc) return;
+
+  const isOff = tokenDoc.getFlag(MODULE_ID, "effectsDisabled") === true;
+  const tip = off => game.i18n.localize(off ? "ATDE.hud.effectsOff" : "ATDE.hud.effectsOn");
+
+  const btn = document.createElement("div");
+  btn.className = "control-icon atde-hud-toggle" + (isOff ? " active" : "");
+  btn.dataset.tooltip = tip(isOff);
+  btn.innerHTML = `<i class="fas fa-tint${isOff ? "-slash" : ""}"></i>`;
+  btn.addEventListener("click", async () => {
+    const nowOff = tokenDoc.getFlag(MODULE_ID, "effectsDisabled") === true;
+    await tokenDoc.setFlag(MODULE_ID, "effectsDisabled", !nowOff);
+    const off = !nowOff;
+    btn.classList.toggle("active", off);
+    btn.dataset.tooltip = tip(off);
+    btn.querySelector("i").className = `fas fa-tint${off ? "-slash" : ""}`;
+    queueTokenRefresh(tokenDoc);
+  });
+
+  const col = root.querySelector(".col.left") ?? root.querySelector(".col.right");
+  col?.appendChild(btn);
+});
+
+// Inject per-token override controls into the Token Configuration sheet. The
+// inputs are named `flags.<module>.<key>` so the sheet's native submit writes
+// them straight to the token flags — no custom save handler needed.
+Hooks.on("renderTokenConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  const doc = app.document ?? app.object ?? app.token;
+  if (!root || !doc) return;
+  if (root.querySelector(".atde-token-config")) return; // already injected
+
+  const disabled = doc.getFlag(MODULE_ID, "effectsDisabled") === true;
+  const colorOverride = doc.getFlag(MODULE_ID, "bloodColorOverride") ?? "";
+
+  const L = key => game.i18n.localize(key);
+  const fs = document.createElement("fieldset");
+  fs.className = "atde-token-config";
+  fs.innerHTML = `
+    <legend>${L("ATDE.tokenConfig.legend")}</legend>
+    <div class="form-group">
+      <label>${L("ATDE.tokenConfig.disableLabel")}</label>
+      <div class="form-fields">
+        <input type="checkbox" name="flags.${MODULE_ID}.effectsDisabled" ${disabled ? "checked" : ""}>
+      </div>
+      <p class="hint">${L("ATDE.tokenConfig.disableHint")}</p>
+    </div>
+    <div class="form-group">
+      <label>${L("ATDE.tokenConfig.colorLabel")}</label>
+      <div class="form-fields">
+        <input type="text" name="flags.${MODULE_ID}.bloodColorOverride" value="${colorOverride}" placeholder="${L("ATDE.tokenConfig.colorPlaceholder")}">
+      </div>
+      <p class="hint">${L("ATDE.tokenConfig.colorHint")}</p>
+    </div>`;
+
+  const form = root.tagName === "FORM" ? root : root.querySelector("form");
+  const footer = form?.querySelector("footer, .sheet-footer");
+  if (footer) footer.insertAdjacentElement("beforebegin", fs);
+  else form?.appendChild(fs);
+
+  app.setPosition?.({ height: "auto" });
+});
+
 Hooks.on("canvasReady", () => {
   refreshAllVisibleTokens();
+  redrawAll();      // restore persisted blood decals for this scene
+  startSweep();
+});
+
+// React to persisted-decal changes from any client (clear-all, revive, prune).
+Hooks.on("updateScene", (scene, change) => {
+  if (scene.id !== canvas?.scene?.id) return;
+  if (foundry.utils.hasProperty(change, `flags.${MODULE_ID}`)) onRecordsChanged();
 });
 
 Hooks.on("createToken", tokenDoc => {
@@ -141,6 +235,12 @@ Hooks.on("preUpdateToken", (tokenDoc, change) => {
 });
 
 Hooks.on("updateToken", async (tokenDoc, change, options) => {
+  // React to our own per-token flag changes (enable/disable, colour override)
+  // so the token's visuals refresh on every client.
+  if (foundry.utils.hasProperty(change, `flags.${MODULE_ID}`)) {
+    queueTokenRefresh(tokenDoc);
+  }
+
   const moved = Object.hasOwn(change, "x") || Object.hasOwn(change, "y");
   if (!moved) return;
 
@@ -150,13 +250,15 @@ Hooks.on("updateToken", async (tokenDoc, change, options) => {
   const actor = tokenDoc.actor;
   if (!actor) { PRE_MOVE.delete(tokenDoc.id); return; }
 
+  const { disabled, color: colorOverride, suppressBlood } = resolveEffectConfig(tokenDoc);
+  if (disabled) { PRE_MOVE.delete(tokenDoc.id); return; }
+
   const hp = getActorHp(actor);
   if (!hp) { PRE_MOVE.delete(tokenDoc.id); return; }
 
   const state = computeState(hp.value, hp.max);
   if (!state.isBleeding || state.isDead) { PRE_MOVE.delete(tokenDoc.id); return; }
 
-  const { color: colorOverride, suppressBlood } = getBloodColorForActor(actor, getSelectedPreset());
   if (suppressBlood) { PRE_MOVE.delete(tokenDoc.id); return; }
 
   const prev = PRE_MOVE.get(tokenDoc.id);
@@ -165,7 +267,8 @@ Hooks.on("updateToken", async (tokenDoc, change, options) => {
   if (!prev) return;
 
   // Sparse marks at movement origin (existing system)
-  maybeDropBloodTrail(tokenDoc, prev.x, prev.y, colorOverride);
+  const rec = maybeDropBloodTrail(tokenDoc, prev.x, prev.y, colorOverride);
+  if (rec) await addDecals([rec], { lifetimeMs: trailLifetimeMs(), tokenId: tokenDoc.id });
 });
 
 // moveToken fires once per move after the update completes, with the full
@@ -181,13 +284,15 @@ Hooks.on("moveToken", async (tokenDoc, movement, operation) => {
   const actor = tokenDoc.actor;
   if (!actor) return;
 
+  const { disabled, color: colorOverride, suppressBlood } = resolveEffectConfig(tokenDoc);
+  if (disabled) return;
+
   const hp = getActorHp(actor);
   if (!hp) return;
 
   const state = computeState(hp.value, hp.max);
   if (!state.isBleeding || state.isDead) return;
 
-  const { color: colorOverride, suppressBlood } = getBloodColorForActor(actor, getSelectedPreset());
   if (suppressBlood) return;
 
   // Build the waypoint list for THIS move only. movement.passed.waypoints is
@@ -213,13 +318,44 @@ Hooks.on("moveToken", async (tokenDoc, movement, operation) => {
     await token.movementAnimationPromise;
   }
 
-  dropPathTrail(tokenDoc, waypoints, colorOverride);
+  const recs = dropPathTrail(tokenDoc, waypoints, colorOverride);
+  if (recs?.length) await addDecals(recs, { lifetimeMs: trailLifetimeMs(), tokenId: tokenDoc.id });
+});
+
+// Cache of pre-update HP by actor id, so updateActor can tell damage from heal.
+const PRE_HP = new Map();
+
+Hooks.on("preUpdateActor", (actor, change) => {
+  if (!hpRelevantChange(change)) return;
+  const hp = getActorHp(actor); // actor still holds pre-update values here
+  if (hp) PRE_HP.set(actor.id, hp.value);
 });
 
 Hooks.on("updateActor", async (actor, change) => {
   if (!hpRelevantChange(change)) return;
+  const oldHp = PRE_HP.get(actor.id);
+  PRE_HP.delete(actor.id);
   await refreshActorTokens(actor);
+  maybeFlashActor(actor, oldHp);
 });
+
+// Pulse a red (damage) or green (heal) flash over the actor's tokens.
+function maybeFlashActor(actor, oldHp) {
+  if (oldHp == null) return;
+  const hp = getActorHp(actor);
+  if (!hp) return;
+  const delta = hp.value - oldHp;
+  if (delta === 0) return;
+
+  if (delta < 0 && !game.settings.get(MODULE_ID, "flashOnDamage")) return;
+  if (delta > 0 && !game.settings.get(MODULE_ID, "flashOnHeal")) return;
+
+  const color = delta < 0 ? 0xff2222 : 0x22cc44;
+  for (const token of actor.getActiveTokens(true)) {
+    if (resolveEffectConfig(token.document).disabled) continue;
+    playHitFlash(token, color);
+  }
+}
 
 async function refreshActorTokens(actor) {
   if (!actor) return;
@@ -254,10 +390,48 @@ function queueTokenRefresh(tokenDoc) {
   tokenRefreshTimers.set(tokenId, timer);
 }
 
+// Persisted-decal lifetimes (ms); null = infinite, matching the runtime timers.
+function poolLifetimeMs() {
+  const s = Number(game.settings.get(MODULE_ID, "bloodPoolLifetime") ?? 180);
+  return s >= 1830 ? null : s * 1000;
+}
+function trailLifetimeMs() {
+  const s = Number(game.settings.get(MODULE_ID, "bloodTrailLifetime") ?? 180);
+  return s >= 1830 ? null : s * 1000;
+}
+
+// Decides whether the death blood pool should appear, per the deathTrigger
+// setting. All modes still require the token to be at/below 0 HP.
+function isDefeated(actor, state) {
+  if (!state.isDead) return false;
+  const mode = game.settings.get(MODULE_ID, "deathTrigger");
+  if (mode === "npcOnly") return !actor.hasPlayerOwner;
+  if (mode === "statusDefeated") {
+    const statuses = actor.statuses;
+    if (!statuses) return false;
+    const defeatedId = CONFIG?.specialStatusEffects?.DEFEATED;
+    return (defeatedId && statuses.has(defeatedId)) || statuses.has("dead") || statuses.has("defeated");
+  }
+  return true; // "zeroHp" (default) — original behaviour
+}
+
 async function applyStateToToken(tokenDoc) {
   const token = tokenDoc?.object;
   const actor = tokenDoc?.actor;
   if (!token || !actor || token.destroyed) return;
+
+  const { disabled, color: colorOverride, suppressBlood, deathStyle } = resolveEffectConfig(tokenDoc);
+
+  // Effects disabled for this token/actor — strip everything back to default.
+  if (disabled) {
+    await clearVisualFilter(token);
+    clearRuntimeEffects(tokenDoc.id);
+    PRE_MOVE.delete(tokenDoc.id);
+    if ((tokenDoc.alpha ?? 1) !== 1 && tokenDoc.canUserModify(game.user, "update")) {
+      await tokenDoc.update({ alpha: 1 }, { animate: false });
+    }
+    return;
+  }
 
   const hp = getActorHp(actor);
   if (!hp) {
@@ -271,7 +445,7 @@ async function applyStateToToken(tokenDoc) {
   }
 
   const state = computeState(hp.value, hp.max);
-  const { color: colorOverride, suppressBlood } = getBloodColorForActor(actor, getSelectedPreset());
+  const defeated = isDefeated(actor, state);
 
   await applyAlpha(tokenDoc, state.alpha);
   // suppressBlood = true for elementals: desaturate normally, skip the blood tint
@@ -293,13 +467,15 @@ async function applyStateToToken(tokenDoc) {
   if (game.settings.get(MODULE_ID, "enableBloodPool")) {
     const wasDead = actor.getFlag(MODULE_ID, "wasDead") === true;
 
-    if (state.isDead && !wasDead) {
+    if (defeated && !wasDead) {
       removeBleedingOverlay(tokenDoc.id);
       if (game.user.isGM) await actor.setFlag(MODULE_ID, "wasDead", true);
-      ensureBloodPool(token, colorOverride);
-    } else if (!state.isDead && wasDead) {
+      const desc = ensureBloodPool(token, colorOverride, deathStyle);
+      if (desc) await addDecals([{ kind: "pool", ...desc }], { lifetimeMs: poolLifetimeMs(), tokenId: token.id });
+    } else if (!defeated && wasDead) {
       if (game.user.isGM) await actor.setFlag(MODULE_ID, "wasDead", false);
       removeBloodPool(token.id);
+      await removePoolDecalForToken(token.id);
     }
   } else {
     removeBloodPool(token.id);

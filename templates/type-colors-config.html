@@ -1,13 +1,10 @@
 <div class="atde-type-colors">
-  <p class="notes">
-    Configure the global default blood color, per-type colors, and custom creature type rules.
-    Custom types are matched before built-in types.
-  </p>
+  <p class="notes">{{localize "ATDE.dialog.intro"}}</p>
 
   {{!-- Global default color --}}
-  <h3 class="atde-dialog-header">Global Default</h3>
+  <h3 class="atde-dialog-header">{{localize "ATDE.dialog.globalDefault"}}</h3>
   <div class="form-group">
-    <label>Default Blood Color</label>
+    <label>{{localize "ATDE.dialog.defaultBloodColor"}}</label>
     <div class="form-fields">
       <input type="color" name="defaultBloodColor" value="{{defaultBloodColor}}">
       <button type="button" class="reset-default-color" data-default="#8b0000" title="Reset to default">
@@ -17,13 +14,13 @@
   </div>
 
   {{!-- Built-in types --}}
-  <h3 class="atde-dialog-header">Built-in Types</h3>
+  <h3 class="atde-dialog-header">{{localize "ATDE.dialog.builtInTypes"}}</h3>
   {{#each types}}
   <div class="form-group">
     <label>{{label}}</label>
     {{#if suppress}}
     <div class="form-fields">
-      <em class="hint">Blood effects suppressed — desaturation still applies.</em>
+      <em class="hint">{{localize "ATDE.dialog.suppressed"}}</em>
     </div>
     {{else}}
     <div class="form-fields">
@@ -32,6 +29,12 @@
               title="Reset to default">
         <i class="fas fa-undo"></i>
       </button>
+      <label class="atde-deathstyle-label">{{localize "ATDE.dialog.death"}}</label>
+      <select name="deathstyle_{{key}}" class="atde-deathstyle-select">
+        {{#each styleOptions}}
+        <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+        {{/each}}
+      </select>
     </div>
     {{/if}}
   </div>
@@ -39,22 +42,18 @@
 
   {{!-- Custom types --}}
   <h3 class="atde-dialog-header atde-custom-header">
-    Custom Types
+    {{localize "ATDE.dialog.customTypes"}}
     <button type="button" class="add-custom-type" title="Add custom type">
-      <i class="fas fa-plus"></i> Add
+      <i class="fas fa-plus"></i> {{localize "ATDE.dialog.add"}}
     </button>
   </h3>
-  <p class="notes atde-custom-hint">
-    Match against any actor data path. <em>Data path</em> is a dot-notation property
-    (e.g. <code>system.traits.value</code>). <em>Match values</em> is a comma-separated
-    list — any substring match triggers the type.
-  </p>
+  <p class="notes atde-custom-hint">{{localize "ATDE.dialog.customHint"}}</p>
 
   <div class="atde-custom-types">
     {{#each customTypes}}
     <div class="atde-custom-row">
       <div class="atde-custom-row-top">
-        <input type="text" name="custom_label_{{@index}}" value="{{label}}" placeholder="Name">
+        <input type="text" name="custom_label_{{@index}}" value="{{label}}" placeholder="{{localize 'ATDE.dialog.namePlaceholder'}}">
         <input type="color" name="custom_color_{{@index}}" value="{{color}}">
         <button type="button" class="delete-custom-type" title="Delete">
           <i class="fas fa-trash"></i>
@@ -62,20 +61,23 @@
       </div>
       <div class="atde-custom-row-paths">
         <input type="text" name="custom_matchPath_{{@index}}" value="{{matchPath}}"
-               placeholder="Data path (e.g. system.traits.value)">
+               placeholder="{{localize 'ATDE.dialog.pathPlaceholder'}}">
         <input type="text" name="custom_matchValues_{{@index}}" value="{{matchValues}}"
-               placeholder="Match values, comma-separated">
+               placeholder="{{localize 'ATDE.dialog.valuesPlaceholder'}}">
       </div>
     </div>
     {{/each}}
   </div>
 
   <footer class="sheet-footer flexrow">
+    <button type="button" class="atde-clear-blood" title="{{localize 'ATDE.dialog.clearBloodTitle'}}">
+      <i class="fas fa-tint-slash"></i> {{localize "ATDE.dialog.clearBlood"}}
+    </button>
     <button type="button" class="reset-all-colors">
-      <i class="fas fa-undo"></i> Reset Built-in Colors
+      <i class="fas fa-undo"></i> {{localize "ATDE.dialog.resetBuiltIn"}}
     </button>
     <button type="submit">
-      <i class="fas fa-save"></i> Save
+      <i class="fas fa-save"></i> {{localize "ATDE.dialog.save"}}
     </button>
   </footer>
 </div>

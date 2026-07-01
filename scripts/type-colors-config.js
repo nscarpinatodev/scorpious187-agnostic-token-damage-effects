@@ -1,5 +1,6 @@
 import { MODULE_ID } from "./presets.js";
-import { CREATURE_TYPES } from "./creature-types.js";
+import { CREATURE_TYPES, DEATH_STYLES } from "./creature-types.js";
+import { clearSceneDecals } from "./persistence.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -12,7 +13,7 @@ export class TypeColorsConfig extends HandlebarsApplicationMixin(ApplicationV2) 
       closeOnSubmit: true,
     },
     window: {
-      title: "Blood Colors by Creature Type",
+      title: "ATDE.dialog.title",
       icon: "fas fa-tint",
     },
     position: {
@@ -27,17 +28,24 @@ export class TypeColorsConfig extends HandlebarsApplicationMixin(ApplicationV2) 
   };
 
   async _prepareContext(_options) {
-    const saved       = game.settings.get(MODULE_ID, "creatureTypeColors") ?? {};
-    const customTypes = game.settings.get(MODULE_ID, "customCreatureTypes") ?? [];
+    const saved        = game.settings.get(MODULE_ID, "creatureTypeColors") ?? {};
+    const savedStyles  = game.settings.get(MODULE_ID, "creatureTypeDeathStyles") ?? {};
+    const customTypes  = game.settings.get(MODULE_ID, "customCreatureTypes") ?? [];
     return {
       defaultBloodColor: game.settings.get(MODULE_ID, "bloodColor") ?? "#8b0000",
-      types: Object.entries(CREATURE_TYPES).map(([key, cfg]) => ({
-        key,
-        label:        cfg.label,
-        suppress:     cfg.suppress,
-        color:        saved[key] ?? cfg.defaultColor ?? "#8b0000",
-        defaultColor: cfg.defaultColor ?? "#8b0000",
-      })),
+      types: Object.entries(CREATURE_TYPES).map(([key, cfg]) => {
+        const current = savedStyles[key] || cfg.deathStyle || "blood";
+        return {
+          key,
+          label:        cfg.label,
+          suppress:     cfg.suppress,
+          color:        saved[key] ?? cfg.defaultColor ?? "#8b0000",
+          defaultColor: cfg.defaultColor ?? "#8b0000",
+          styleOptions: Object.entries(DEATH_STYLES).map(([value, sLabel]) => ({
+            value, label: sLabel, selected: value === current
+          })),
+        };
+      }),
       customTypes: customTypes.map(ct => ({
         label:       ct.label       ?? "",
         color:       ct.color       ?? "#8b0000",
@@ -60,6 +68,12 @@ export class TypeColorsConfig extends HandlebarsApplicationMixin(ApplicationV2) 
     this.element.querySelector(".reset-default-color")?.addEventListener("click", ev => {
       const input = this.element.querySelector(`input[name="defaultBloodColor"]`);
       if (input) input.value = ev.currentTarget.dataset.default ?? "#8b0000";
+    });
+
+    // Clear all persisted blood on the current scene (GM only)
+    this.element.querySelector(".atde-clear-blood")?.addEventListener("click", async () => {
+      await clearSceneDecals();
+      ui.notifications?.info(game.i18n.localize("ATDE.notify.clearedBlood"));
     });
 
     // Reset all built-in colors (does not touch default or custom types)
@@ -110,14 +124,18 @@ export class TypeColorsConfig extends HandlebarsApplicationMixin(ApplicationV2) 
       await game.settings.set(MODULE_ID, "bloodColor", data.defaultBloodColor);
     }
 
-    // Per-type colors
+    // Per-type colors + death styles
     const colors = {};
+    const styles = {};
     for (const [key, cfg] of Object.entries(CREATURE_TYPES)) {
       if (cfg.suppress) continue;
       const val = data[`color_${key}`];
       if (val) colors[key] = val;
+      const style = data[`deathstyle_${key}`];
+      if (style && style !== cfg.deathStyle) styles[key] = style;
     }
     await game.settings.set(MODULE_ID, "creatureTypeColors", colors);
+    await game.settings.set(MODULE_ID, "creatureTypeDeathStyles", styles);
 
     // Custom types — collect all indexed rows regardless of gaps from deletions
     const customTypes = [];

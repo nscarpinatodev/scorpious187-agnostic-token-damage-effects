@@ -1,10 +1,20 @@
 import { MODULE_ID, HP_PRESETS } from "./presets.js";
 
 export function registerSettings(refreshAllVisibleTokens) {
+  // ── Debug ─────────────────────────────────────────────────────────────────
+  game.settings.register(MODULE_ID, "debug", {
+    name: "ATDE.settings.debug.name",
+    hint: "ATDE.settings.debug.hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
   // ── HP Detection ─────────────────────────────────────────────────────────
   game.settings.register(MODULE_ID, "hpPreset", {
-    name: "HP System Preset",
-    hint: "Choose a preset HP path for a supported game system, or use Custom.",
+    name: "ATDE.settings.hpPreset.name",
+    hint: "ATDE.settings.hpPreset.hint",
     scope: "world",
     config: true,
     type: String,
@@ -14,8 +24,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "customHpCurrentPath", {
-    name: "Custom HP Current Path",
-    hint: "Example: system.attributes.hp.value",
+    name: "ATDE.settings.customHpCurrentPath.name",
+    hint: "ATDE.settings.customHpCurrentPath.hint",
     scope: "world",
     config: true,
     type: String,
@@ -24,8 +34,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "customHpMaxPath", {
-    name: "Custom HP Max Path",
-    hint: "Example: system.attributes.hp.max",
+    name: "ATDE.settings.customHpMaxPath.name",
+    hint: "ATDE.settings.customHpMaxPath.hint",
     scope: "world",
     config: true,
     type: String,
@@ -34,8 +44,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "customCreatureTypePath", {
-    name: "Custom Creature Type Path",
-    hint: "Data path for creature type on the Custom HP preset. Returns a string or array. Example: system.details.type.value",
+    name: "ATDE.settings.customCreatureTypePath.name",
+    hint: "ATDE.settings.customCreatureTypePath.hint",
     scope: "world",
     config: true,
     type: String,
@@ -44,8 +54,8 @@ export function registerSettings(refreshAllVisibleTokens) {
 
   // ── Token Coloration ──────────────────────────────────────────────────────
   game.settings.register(MODULE_ID, "enableSaturation", {
-    name: "Enable HP Desaturation (Token Magic FX)",
-    hint: "Uses Token Magic FX to desaturate tokens as HP decreases.",
+    name: "ATDE.settings.enableSaturation.name",
+    hint: "ATDE.settings.enableSaturation.hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -54,8 +64,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "enableDamageTint", {
-    name: "Enable Creature Type Blood Color Tint",
-    hint: "Continuously tints the token image toward its blood color as HP decreases, similar to BG3 combat portraits.",
+    name: "ATDE.settings.enableDamageTint.name",
+    hint: "ATDE.settings.enableDamageTint.hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -64,8 +74,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "grayscaleOnDeath", {
-    name: "Grayscale Only on Death (No Tint)",
-    hint: "When enabled, tokens at 0 HP revert to pure grayscale instead of retaining the blood color tint.",
+    name: "ATDE.settings.grayscaleOnDeath.name",
+    hint: "ATDE.settings.grayscaleOnDeath.hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -74,8 +84,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "useSteppedSaturation", {
-    name: "Use 10% Desaturation Steps",
-    hint: "Use 0.1 saturation steps per 10% HP instead of a smooth gradient.",
+    name: "ATDE.settings.useSteppedSaturation.name",
+    hint: "ATDE.settings.useSteppedSaturation.hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -84,8 +94,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "deadOpacity", {
-    name: "Dead Token Opacity",
-    hint: "Opacity for tokens at 0 HP. 0 makes them fully invisible.",
+    name: "ATDE.settings.deadOpacity.name",
+    hint: "ATDE.settings.deadOpacity.hint",
     scope: "world",
     config: true,
     type: Number,
@@ -94,12 +104,31 @@ export function registerSettings(refreshAllVisibleTokens) {
     onChange: () => refreshAllVisibleTokens()
   });
 
+  // ── Hit Flash ─────────────────────────────────────────────────────────────
+  game.settings.register(MODULE_ID, "flashOnDamage", {
+    name: "ATDE.settings.flashOnDamage.name",
+    hint: "ATDE.settings.flashOnDamage.hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register(MODULE_ID, "flashOnHeal", {
+    name: "ATDE.settings.flashOnHeal.name",
+    hint: "ATDE.settings.flashOnHeal.hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
   // ── Blood Effects ─────────────────────────────────────────────────────────
   // (Blood Colors configure button is injected here by the renderSettingsConfig hook)
 
   game.settings.register(MODULE_ID, "enableBleedingOverlay", {
-    name: "Enable Bleeding Overlay",
-    hint: "Show animated edge drips at or below the bleeding threshold.",
+    name: "ATDE.settings.enableBleedingOverlay.name",
+    hint: "ATDE.settings.enableBleedingOverlay.hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -108,8 +137,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "bleedingThreshold", {
-    name: "Bleeding Threshold (%)",
-    hint: "Tokens at or below this HP percentage gain a blood overlay.",
+    name: "ATDE.settings.bleedingThreshold.name",
+    hint: "ATDE.settings.bleedingThreshold.hint",
     scope: "world",
     config: true,
     type: Number,
@@ -119,8 +148,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "bleedingDropCount", {
-    name: "Bleeding Drop Count",
-    hint: "Number of animated drips around the token edge.",
+    name: "ATDE.settings.bleedingDropCount.name",
+    hint: "ATDE.settings.bleedingDropCount.hint",
     scope: "world",
     config: true,
     type: Number,
@@ -130,8 +159,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "enableBloodTrails", {
-    name: "Enable Blood Trails",
-    hint: "Leave a sparse blood mark near the token's origin each time it moves while bloodied.",
+    name: "ATDE.settings.enableBloodTrails.name",
+    hint: "ATDE.settings.enableBloodTrails.hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -139,8 +168,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "enableBloodPathTrails", {
-    name: "Enable Blood Path Trails",
-    hint: "Leave drips and smears along the token's full movement path through each grid square it crosses.",
+    name: "ATDE.settings.enableBloodPathTrails.name",
+    hint: "ATDE.settings.enableBloodPathTrails.hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -148,8 +177,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "bloodTrailSpacing", {
-    name: "Blood Trail Spacing (pixels)",
-    hint: "Minimum distance a bloodied token must move before another blood mark is dropped.",
+    name: "ATDE.settings.bloodTrailSpacing.name",
+    hint: "ATDE.settings.bloodTrailSpacing.hint",
     scope: "world",
     config: true,
     type: Number,
@@ -158,8 +187,8 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "bloodTrailLifetime", {
-    name: "Blood Trail Lifetime",
-    hint: "How long blood trail marks remain before fading (30s – 30min in 30s steps). Slide all the way right for infinite — marks never fade.",
+    name: "ATDE.settings.bloodTrailLifetime.name",
+    hint: "ATDE.settings.bloodTrailLifetime.hint",
     scope: "world",
     config: true,
     type: Number,
@@ -169,8 +198,8 @@ export function registerSettings(refreshAllVisibleTokens) {
 
   // ── Death Blood Pool ──────────────────────────────────────────────────────
   game.settings.register(MODULE_ID, "enableBloodPool", {
-    name: "Enable Death Blood Pool",
-    hint: "Create a blood pool under a token when it reaches 0 HP.",
+    name: "ATDE.settings.enableBloodPool.name",
+    hint: "ATDE.settings.enableBloodPool.hint",
     scope: "world",
     config: true,
     type: Boolean,
@@ -178,14 +207,39 @@ export function registerSettings(refreshAllVisibleTokens) {
     onChange: () => refreshAllVisibleTokens()
   });
 
+  game.settings.register(MODULE_ID, "deathTrigger", {
+    name: "ATDE.settings.deathTrigger.name",
+    hint: "ATDE.settings.deathTrigger.hint",
+    scope: "world",
+    config: true,
+    type: String,
+    choices: {
+      zeroHp: "ATDE.settings.deathTrigger.choices.zeroHp",
+      npcOnly: "ATDE.settings.deathTrigger.choices.npcOnly",
+      statusDefeated: "ATDE.settings.deathTrigger.choices.statusDefeated"
+    },
+    default: "zeroHp",
+    onChange: () => refreshAllVisibleTokens()
+  });
+
   game.settings.register(MODULE_ID, "bloodPoolLifetime", {
-    name: "Blood Pool Lifetime",
-    hint: "How long the death pool remains before fading (30s – 30min in 30s steps). Slide all the way right for infinite — pools never fade.",
+    name: "ATDE.settings.bloodPoolLifetime.name",
+    hint: "ATDE.settings.bloodPoolLifetime.hint",
     scope: "world",
     config: true,
     type: Number,
     range: { min: 30, max: 1830, step: 30 },
     default: 180
+  });
+
+  // ── Persistence ───────────────────────────────────────────────────────────
+  game.settings.register(MODULE_ID, "persistDecals", {
+    name: "ATDE.settings.persistDecals.name",
+    hint: "ATDE.settings.persistDecals.hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false
   });
 
   // ── Hidden / internal ─────────────────────────────────────────────────────
@@ -198,6 +252,13 @@ export function registerSettings(refreshAllVisibleTokens) {
   });
 
   game.settings.register(MODULE_ID, "creatureTypeColors", {
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {}
+  });
+
+  game.settings.register(MODULE_ID, "creatureTypeDeathStyles", {
     scope: "world",
     config: false,
     type: Object,
