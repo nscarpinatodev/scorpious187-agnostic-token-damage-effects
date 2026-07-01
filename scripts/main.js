@@ -202,6 +202,52 @@ Hooks.on("renderTokenConfig", (app, html) => {
   app.setPosition?.({ height: "auto" });
 });
 
+// GM button in the Token scene-controls toolbar to wipe persisted blood on the
+// current scene. Handles both the V13 object-keyed control layout and the
+// legacy V12 array layout.
+let _clearBloodPrompting = false;
+async function promptClearBlood() {
+  if (_clearBloodPrompting) return; // guard against double-invoke
+  _clearBloodPrompting = true;
+  try {
+    const DV2 = foundry.applications?.api?.DialogV2;
+    const ok = DV2?.confirm
+      ? await DV2.confirm({
+          window: { title: game.i18n.localize("ATDE.dialog.clearBlood") },
+          content: `<p>${game.i18n.localize("ATDE.dialog.clearBloodTitle")}?</p>`
+        })
+      : true;
+    if (ok) await clearSceneDecals();
+  } finally {
+    _clearBloodPrompting = false;
+  }
+}
+
+Hooks.on("getSceneControlButtons", (controls) => {
+  if (!game.user.isGM) return;
+
+  const base = {
+    name: "atde-clear-blood",
+    title: game.i18n.localize("ATDE.dialog.clearBlood"),
+    icon: "fas fa-tint-slash",
+    button: true,
+    visible: true
+  };
+
+  if (Array.isArray(controls)) {
+    // V12: array of controls, each with a tools array; uses onClick.
+    const tokenCtl = controls.find(c => c.name === "token" || c.name === "tokens");
+    if (Array.isArray(tokenCtl?.tools)) tokenCtl.tools.push({ ...base, onClick: promptClearBlood });
+  } else if (controls && typeof controls === "object") {
+    // V13+: controls keyed by name, tools keyed by name; uses onChange.
+    const tokenCtl = controls.tokens ?? controls.token;
+    if (tokenCtl?.tools) {
+      base.order = Object.keys(tokenCtl.tools).length;
+      tokenCtl.tools[base.name] = { ...base, onChange: promptClearBlood };
+    }
+  }
+});
+
 Hooks.on("canvasReady", () => {
   refreshAllVisibleTokens();
   redrawAll();      // restore persisted blood decals for this scene
@@ -339,6 +385,22 @@ Hooks.on("updateActor", async (actor, change) => {
   maybeFlashActor(actor, oldHp);
 });
 
+// Marking a token dead/defeated toggles a status ActiveEffect rather than
+// updating HP, so updateActor never fires. Re-evaluate the actor's tokens when
+// a status-bearing effect is added, removed, or toggled so the death pool can
+// react to the "statusDefeated" trigger.
+function refreshActorFromEffect(effect) {
+  if (!effect?.statuses || effect.statuses.size === 0) return;
+  const parent = effect.parent;
+  const actor = parent instanceof Actor ? parent
+              : (parent?.parent instanceof Actor ? parent.parent : null);
+  if (actor) refreshActorTokens(actor);
+}
+
+Hooks.on("createActiveEffect", refreshActorFromEffect);
+Hooks.on("deleteActiveEffect", refreshActorFromEffect);
+Hooks.on("updateActiveEffect", refreshActorFromEffect);
+
 // Pulse a red (damage) or green (heal) flash over the actor's tokens.
 function maybeFlashActor(actor, oldHp) {
   if (oldHp == null) return;
@@ -400,18 +462,22 @@ function trailLifetimeMs() {
   return s >= 1830 ? null : s * 1000;
 }
 
+// True when the actor carries a Dead/Defeated status marker.
+function hasDeathStatus(actor) {
+  const statuses = actor?.statuses;
+  if (!statuses) return false;
+  const defeatedId = CONFIG?.specialStatusEffects?.DEFEATED;
+  return (defeatedId && statuses.has(defeatedId)) || statuses.has("dead") || statuses.has("defeated");
+}
+
 // Decides whether the death blood pool should appear, per the deathTrigger
-// setting. All modes still require the token to be at/below 0 HP.
+// setting. In "statusDefeated" mode the Dead/Defeated status alone triggers it,
+// regardless of HP; the other modes require the token to be at/below 0 HP.
 function isDefeated(actor, state) {
-  if (!state.isDead) return false;
   const mode = game.settings.get(MODULE_ID, "deathTrigger");
+  if (mode === "statusDefeated") return hasDeathStatus(actor);
+  if (!state.isDead) return false;
   if (mode === "npcOnly") return !actor.hasPlayerOwner;
-  if (mode === "statusDefeated") {
-    const statuses = actor.statuses;
-    if (!statuses) return false;
-    const defeatedId = CONFIG?.specialStatusEffects?.DEFEATED;
-    return (defeatedId && statuses.has(defeatedId)) || statuses.has("dead") || statuses.has("defeated");
-  }
   return true; // "zeroHp" (default) — original behaviour
 }
 
@@ -446,6 +512,20 @@ async function applyStateToToken(tokenDoc) {
 
   const state = computeState(hp.value, hp.max);
   const defeated = isDefeated(actor, state);
+
+  // A token marked dead by status gets the complete "dead" look — full
+  // desaturation, dead opacity, no bleeding — even above 0 HP, matching a token
+  // that actually hit 0 HP. (The blood pool itself still follows deathTrigger.)
+  if (!state.isDead && hasDeathStatus(actor)) {
+    Object.assign(state, {
+      ratio: 0,
+      ratioRaw: 0,
+      saturation: 0,
+      isDead: true,
+      isBleeding: false,
+      alpha: game.settings.get(MODULE_ID, "deadOpacity")
+    });
+  }
 
   await applyAlpha(tokenDoc, state.alpha);
   // suppressBlood = true for elementals: desaturate normally, skip the blood tint

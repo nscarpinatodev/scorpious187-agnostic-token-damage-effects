@@ -16,15 +16,34 @@
   cursor: pointer;
 }
 
-/* ── Death-style selector in the blood config dialog ──────────────────── */
+/* ── Built-in type rows: keep the colour swatch visible next to the
+   reset button and death-style selector ───────────────────────────────── */
+.atde-type-colors .form-fields {
+  align-items: center;
+  gap: 4px;
+}
+/* Foundry's colour input has no flex-basis, so it collapses to a sliver when
+   siblings are added. Pin it to a fixed size. */
+.atde-type-colors .form-fields input[type="color"] {
+  flex: 0 0 auto;
+  width: 46px;
+  min-width: 46px;
+  height: 26px;
+  padding: 0;
+}
+.atde-type-colors .form-fields button {
+  flex: 0 0 auto;
+}
 .atde-deathstyle-label {
-  margin-left: 10px;
+  flex: 0 0 auto;
+  margin-left: 6px;
   opacity: 0.75;
   font-size: 0.9em;
+  white-space: nowrap;
 }
 .atde-deathstyle-select {
-  flex: 0 0 auto;
-  min-width: 84px;
+  flex: 1 1 auto;
+  min-width: 72px;
 }
 
 /* ── Per-token override section in Token Config ───────────────────────── */
