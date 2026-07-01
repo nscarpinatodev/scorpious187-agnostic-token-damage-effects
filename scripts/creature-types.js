@@ -34,7 +34,7 @@ const RAW_TO_KEY = {
   undead: "undead",
   beast: "beast", monstrosity: "beast", animal: "beast",
   "magical beast": "beast", vermin: "beast",
-  construct: "construct", robot: "construct", clockwork: "construct",
+  construct: "construct", robot: "construct", clockwork: "construct", vehicle: "construct",
   aberration: "aberration",
   plant: "plant",
   ooze: "ooze", slime: "ooze",
@@ -46,7 +46,7 @@ const RAW_TO_KEY = {
 
 // Priority order for trait arrays — elemental first so suppression wins
 const TRAIT_PRIORITY = [
-  "elemental", "undead", "construct", "plant", "ooze",
+  "elemental", "undead", "construct", "vehicle", "plant", "ooze",
   "aberration", "fiend", "celestial", "dragon",
   "beast", "fey", "monstrosity", "animal", "vermin", "magical beast",
   "giant", "humanoid",
