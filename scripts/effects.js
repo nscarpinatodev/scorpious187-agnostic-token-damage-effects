@@ -9,6 +9,41 @@ export const RUNTIME = {
   lastTrailDrop: new Map()
 };
 
+// ---------------------------------------------------------------------------
+// Ground decal layer
+// ---------------------------------------------------------------------------
+
+// Ground blood (pools, trails, splatter) lives in a container inside the
+// PrimaryCanvasGroup, alongside tiles and token art. That group is rendered
+// beneath lighting and fog of war, so decals are hidden in unexplored areas and
+// dimmed in explored-but-unseen ones, exactly like the map. The TokenLayer sits
+// in the InterfaceCanvasGroup, which renders ABOVE fog — decals placed there
+// leak through it.
+//
+// Sorted above ground tiles and below token meshes at the background elevation.
+// The container is destroyed when the canvas tears down, so it is recreated
+// lazily on first use after each canvas draw.
+let _decalLayer = null;
+
+export function getDecalLayer() {
+  if (!canvas?.primary) return null;
+  if (_decalLayer && !_decalLayer.destroyed && _decalLayer.parent === canvas.primary) return _decalLayer;
+
+  const Container = foundry.canvas?.primary?.PrimaryCanvasContainer;
+  const Group     = foundry.canvas?.groups?.PrimaryCanvasGroup;
+  if (!Container || !Group) return canvas.tokens ?? null;
+
+  const c = new Container();
+  c.name = `${MODULE_ID}.decals`;
+  c.eventMode = "none";
+  c.interactiveChildren = false;
+  c.elevation = Group.BACKGROUND_ELEVATION ?? 0;
+  c.sortLayer = Group.SORT_LAYERS.TILES + 50;
+  canvas.primary.addChild(c);
+  _decalLayer = c;
+  return c;
+}
+
 function rand(min, max) {
   return min + (Math.random() * (max - min));
 }
@@ -312,7 +347,7 @@ export function clearBloodTrails(tokenId) {
 }
 
 function createBloodTrailMark(token, oldX, oldY, colorOverride = null) {
-  const layer = canvas.tokens;
+  const layer = getDecalLayer();
   if (!layer) return null;
 
   // Shape is seeded (for persistent redraw); positional jitter is not, since
@@ -328,7 +363,7 @@ function createBloodTrailMark(token, oldX, oldY, colorOverride = null) {
 
   g._hvColorOverride = resolvedColor;
   drawBloodTrailMark(g, mulberry32(seed));
-  layer.addChildAt(g, 0);
+  layer.addChild(g);
 
   const lifetimeSec = Number(game.settings.get(MODULE_ID, "bloodTrailLifetime") ?? 180);
   const infinite = lifetimeSec >= 1830;
@@ -439,7 +474,7 @@ export function dropPathTrail(tokenDoc, waypoints, colorOverride) {
   const token = tokenDoc?.object;
   if (!token || token.destroyed) return [];
 
-  const layer = canvas.tokens;
+  const layer = getDecalLayer();
   if (!layer) return [];
 
   const records = [];
@@ -499,7 +534,7 @@ function _placePathMark(layer, x, y, angle, colorOverride, tokenDoc, lifetime) {
     drawBloodTrailMark(g, mulberry32(seed));
   }
 
-  layer.addChildAt(g, 0);
+  layer.addChild(g);
 
   const fadeTimeout = lifetime != null ? setTimeout(() => fadeOutBloodTrailMark(tokenDoc.id, g, 1200), lifetime) : null;
 
@@ -524,7 +559,7 @@ export function dropDamageSplatter(tokenDoc, amountFrac, colorOverride) {
   const token = tokenDoc?.object;
   if (!token || token.destroyed) return [];
 
-  const layer = canvas.tokens;
+  const layer = getDecalLayer();
   if (!layer) return [];
 
   const lifetimeSec = Number(game.settings.get(MODULE_ID, "bloodTrailLifetime") ?? 180);
@@ -697,7 +732,7 @@ export function ensureBloodPool(token, colorOverride = null, style = "blood", se
   if (!canvas?.ready) return null;
   if (RUNTIME.bloodPools.has(token.id)) return null;
 
-  const layer = canvas.tokens;
+  const layer = getDecalLayer();
   if (!layer) return null;
 
   // Seed the shape so the persisted redraw matches this live pool exactly.
@@ -719,7 +754,7 @@ export function ensureBloodPool(token, colorOverride = null, style = "blood", se
   initPoolShape(g, token.center.x, token.center.y, baseRadius, resolvedColor, style, rng);
 
   drawBloodPool(g, token, g._hvProgress);
-  layer.addChildAt(g, 0);
+  layer.addChild(g);
 
   const growTicker = () => {
     const entry = RUNTIME.bloodPools.get(token.id);
@@ -759,7 +794,7 @@ export function ensureBloodPool(token, colorOverride = null, style = "blood", se
 // record onto the tokens layer. Used on reload / for remote clients.
 export function createPoolDecalGraphic(record) {
   if (!canvas?.ready) return null;
-  const layer = canvas.tokens;
+  const layer = getDecalLayer();
   if (!layer) return null;
 
   const rng = mulberry32((record.seed >>> 0));
@@ -779,14 +814,14 @@ export function createPoolDecalGraphic(record) {
   const v = Math.round((1.0 - darkenDepth) * 255);
   g.tint = (v << 16) | (v << 8) | v;
 
-  layer.addChildAt(g, 0);
+  layer.addChild(g);
   return g;
 }
 
 // Draws a static trail mark or smear from a persisted record.
 export function createTrailDecalGraphic(record) {
   if (!canvas?.ready) return null;
-  const layer = canvas.tokens;
+  const layer = getDecalLayer();
   if (!layer) return null;
 
   const rng = mulberry32((record.seed >>> 0));
@@ -804,7 +839,7 @@ export function createTrailDecalGraphic(record) {
     drawBloodTrailMark(g, rng);
   }
 
-  layer.addChildAt(g, 0);
+  layer.addChild(g);
   return g;
 }
 
