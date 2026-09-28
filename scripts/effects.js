@@ -14,11 +14,16 @@ export const RUNTIME = {
 // ---------------------------------------------------------------------------
 
 // Ground blood (pools, trails, splatter) lives in a container inside the
-// PrimaryCanvasGroup, alongside tiles and token art. That group is rendered
-// beneath lighting and fog of war, so decals are hidden in unexplored areas and
-// dimmed in explored-but-unseen ones, exactly like the map. The TokenLayer sits
-// in the InterfaceCanvasGroup, which renders ABOVE fog — decals placed there
-// leak through it.
+// PrimaryCanvasGroup, alongside tiles and token art, so scene lighting applies
+// and tokens draw on top. The TokenLayer is not an option: it sits in the
+// InterfaceCanvasGroup, which renders ABOVE fog, so decals there leak through.
+//
+// Blood is only shown inside current token vision. Explored-but-unseen areas
+// are drawn from the live primary texture, so without a mask players would
+// watch blood appear in rooms they can't see. Foundry's VisionMaskFilter (the
+// same one it uses for region highlights) cuts the container to the vision
+// mask; it switches itself off when there is no active vision (e.g. a GM with
+// no token selected), so the GM still sees everything.
 //
 // Sorted above ground tiles and below token meshes at the background elevation.
 // The container is destroyed when the canvas tears down, so it is recreated
@@ -39,6 +44,13 @@ export function getDecalLayer() {
   c.interactiveChildren = false;
   c.elevation = Group.BACKGROUND_ELEVATION ?? 0;
   c.sortLayer = Group.SORT_LAYERS.TILES + 50;
+
+  const VisionMaskFilter = foundry.canvas?.rendering?.filters?.VisionMaskFilter;
+  if (VisionMaskFilter && canvas.masks?.vision) {
+    c.filters = [VisionMaskFilter.create()];
+    c.filterArea = canvas.app.screen;
+  }
+
   canvas.primary.addChild(c);
   _decalLayer = c;
   return c;
